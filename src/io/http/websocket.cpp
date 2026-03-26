@@ -5,17 +5,98 @@
 #include <logging.h>
 
 #ifdef __EMSCRIPTEN__
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <string.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <netdb.h>
-#include <stdio.h>
-#include <poll.h>
+#include <emscripten.h>
+
+namespace {
+void browserDiag(const string& message)
+{
+    EM_ASM({
+        if (typeof window.EmptyEpsilonDiag === "function")
+            window.EmptyEpsilonDiag(UTF8ToString($0));
+    }, message.c_str());
+}
+}
+
+EM_JS(int, ee_ws_connect, (const char* url_ptr), {
+    if (!Module.eeWebSockets) {
+        Module.eeWebSockets = { nextId: 1, sockets: {} };
+    }
+    const id = Module.eeWebSockets.nextId++;
+    const url = UTF8ToString(url_ptr);
+    const entry = { state: 0, queue: [] };
+    try {
+        const ws = new WebSocket(url);
+        ws.binaryType = "arraybuffer";
+        ws.onopen = function() { entry.state = 1; };
+        ws.onmessage = function(event) {
+            if (event.data instanceof ArrayBuffer) {
+                entry.queue.push(new Uint8Array(event.data));
+            } else if (typeof event.data === "string") {
+                entry.queue.push(new TextEncoder().encode(event.data));
+            }
+        };
+        ws.onerror = function() { if (entry.state !== 1) entry.state = 2; };
+        ws.onclose = function() { entry.state = 2; };
+        entry.ws = ws;
+        Module.eeWebSockets.sockets[id] = entry;
+        return id;
+    } catch (error) {
+        return -1;
+    }
+});
+
+EM_JS(void, ee_ws_close, (int handle), {
+    if (!Module.eeWebSockets || !Module.eeWebSockets.sockets[handle]) {
+        return;
+    }
+    const entry = Module.eeWebSockets.sockets[handle];
+    try {
+        if (entry.ws) {
+            entry.ws.close();
+        }
+    } catch (error) {
+    }
+    delete Module.eeWebSockets.sockets[handle];
+});
+
+EM_JS(int, ee_ws_state, (int handle), {
+    if (!Module.eeWebSockets || !Module.eeWebSockets.sockets[handle]) {
+        return 2;
+    }
+    return Module.eeWebSockets.sockets[handle].state;
+});
+
+EM_JS(int, ee_ws_send, (int handle, const char* data_ptr, int size), {
+    if (!Module.eeWebSockets || !Module.eeWebSockets.sockets[handle]) {
+        return 0;
+    }
+    const entry = Module.eeWebSockets.sockets[handle];
+    if (entry.state !== 1 || !entry.ws) {
+        return 0;
+    }
+    const payload = HEAPU8.slice(data_ptr, data_ptr + size);
+    entry.ws.send(payload);
+    return size;
+});
+
+EM_JS(int, ee_ws_receive, (int handle, char* data_ptr, int size), {
+    if (!Module.eeWebSockets || !Module.eeWebSockets.sockets[handle]) {
+        return 0;
+    }
+    const entry = Module.eeWebSockets.sockets[handle];
+    if (!entry.queue.length) {
+        return 0;
+    }
+    const chunk = entry.queue[0];
+    const amount = Math.min(size, chunk.length);
+    HEAPU8.set(chunk.subarray(0, amount), data_ptr);
+    if (amount >= chunk.length) {
+        entry.queue.shift();
+    } else {
+        entry.queue[0] = chunk.subarray(amount);
+    }
+    return amount;
+});
 #endif
 
 
@@ -122,26 +203,16 @@ bool Websocket::connect(const string& hostname, int port, const string& path, Sc
         scheme = port == 443 ? Scheme::Https : Scheme::Http;
 
 #ifdef __EMSCRIPTEN__
-    struct sockaddr_in server_addr;
-    struct hostent* he = gethostbyname((hostname + path).c_str());
-    if (!he)
-        return false;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = *(u_long *)he->h_addr_list[0];
-    server_addr.sin_port = htons(port);
-
-    socket_handle = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (socket_handle == -1)
-        return false;
-    fcntl(socket_handle, F_SETFL, O_NONBLOCK);
-    if (::connect(socket_handle, reinterpret_cast<const sockaddr*>(&server_addr), sizeof(server_addr)))
+    string scheme_name = scheme == Scheme::Https ? "wss://" : "ws://";
+    string url = scheme_name + hostname + ":" + string(port) + path;
+    browserDiag("ws: connect " + url);
+    socket_handle = ee_ws_connect(url.c_str());
+    if (socket_handle < 0)
     {
-        if (errno != EAGAIN && errno != EINPROGRESS)
-        {
-            close();
-            return false;
-        }
+        browserDiag("ws: connect failed to create browser socket");
+        return false;
     }
+    browserDiag("ws: browser socket handle = " + string(socket_handle));
     state = State::Connecting;
 #else
     if (scheme == Scheme::Https)
@@ -183,7 +254,8 @@ void Websocket::close()
 #ifdef __EMSCRIPTEN__
     if (socket_handle != -1)
     {
-        ::close(socket_handle);
+        browserDiag("ws: close handle " + string(socket_handle));
+        ee_ws_close(socket_handle);
         socket_handle = -1;
     }
 #else
@@ -211,8 +283,9 @@ void Websocket::send(const io::DataBuffer& data_buffer)
     if (state != State::Operational)
         return;
 
-#ifdef EMSCRIPTEN
-    ::send(socket_handle, data_buffer.getData(), data_buffer.getDataSize(), 0);
+#ifdef __EMSCRIPTEN__
+    browserDiag("ws: send bytes = " + string(static_cast<int>(data_buffer.getDataSize())));
+    ee_ws_send(socket_handle, reinterpret_cast<const char*>(data_buffer.getData()), data_buffer.getDataSize());
 #else
     if (data_buffer.getDataSize() < websocket::payload_length_16bit)
     {
@@ -258,15 +331,10 @@ bool Websocket::receive(io::DataBuffer& data_buffer)
     {
 #ifdef __EMSCRIPTEN__
         char buffer[4096];
-        size_t buffer_size = recv(socket_handle, buffer, sizeof(buffer), 0);
-        if (buffer_size < 0)
-        {
-            if (errno != EAGAIN && errno != EWOULDBLOCK)
-                close();
-            return false;
-        }
+        auto buffer_size = ee_ws_receive(socket_handle, buffer, sizeof(buffer));
         if (buffer_size > 0)
         {
+            browserDiag("ws: receive bytes = " + string(buffer_size));
             data_buffer.appendRaw(buffer, buffer_size);
             return true;
         }
@@ -393,17 +461,23 @@ void Websocket::updateReceiveBuffer()
 #ifdef __EMSCRIPTEN__
     if (state == State::Connecting)
     {
-        struct pollfd pfd[1];
-        pfd[0].fd = socket_handle;
-        pfd[0].events = POLLIN | POLLOUT;
-        pfd[0].revents = 0;
-        if (poll(pfd, 1, 0))
+        switch(ee_ws_state(socket_handle))
         {
-            if (pfd[0].revents & POLLOUT)
-                state = State::Operational;
-            else if (pfd[0].revents & POLLIN)
-                close();
+        case 0: break;
+        case 1:
+            browserDiag("ws: state -> operational");
+            state = State::Operational;
+            break;
+        default:
+            browserDiag("ws: state -> closed during connect");
+            close();
+            break;
         }
+    }
+    else if (state == State::Operational && ee_ws_state(socket_handle) == 2)
+    {
+        browserDiag("ws: state -> closed");
+        close();
     }
 #else
     char receive_buffer[4096];

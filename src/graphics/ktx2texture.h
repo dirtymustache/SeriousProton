@@ -7,7 +7,7 @@
 #include <glm/vec2.hpp>
 
 #include "graphics/image.h"
-#include "resources.h"
+#include "../resources.h"
 
 namespace sp {
     class BasicTexture;

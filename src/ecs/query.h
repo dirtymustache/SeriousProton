@@ -23,8 +23,8 @@ template<class PRIMARY, class... T> class Query {
 public:
     class Iterator {
     public:
-        Iterator(int) : iterator(ComponentStorage<PRIMARY>::storage.sparseset.begin()) { while(checkForSkip()) {} }
-        Iterator() : iterator(ComponentStorage<PRIMARY>::storage.sparseset.end()) {}
+        Iterator(int) : iterator(ComponentStorage<PRIMARY>::instance().sparseset.begin()) { while(checkForSkip()) {} }
+        Iterator() : iterator(ComponentStorage<PRIMARY>::instance().sparseset.end()) {}
 
         bool operator!=(const Iterator& other) const { return iterator != other.iterator; }
         void operator++() { ++iterator; while(checkForSkip()) {} }
@@ -38,11 +38,11 @@ public:
         {
             if constexpr (optional_info<T2>::value)
             {
-                if (!ComponentStorage<typename optional_info<T2>::base_type>::storage.sparseset.has(index))
+                if (!ComponentStorage<typename optional_info<T2>::base_type>::instance().sparseset.has(index))
                     return nullptr;
-                return &ComponentStorage<typename optional_info<T2>::base_type>::storage.sparseset.get(index);
+                return &ComponentStorage<typename optional_info<T2>::base_type>::instance().sparseset.get(index);
             } else {
-                return ComponentStorage<T2>::storage.sparseset.get(index);
+                return ComponentStorage<T2>::instance().sparseset.get(index);
             }
         }
 
@@ -59,7 +59,7 @@ public:
         template<typename T2, typename... ARGS> bool checkIfHasAll() {
             if constexpr (!optional_info<T2>::value) {
                 auto index = (*iterator).first;
-                if (!ComponentStorage<T2>::storage.sparseset.has(index))
+                if (!ComponentStorage<T2>::instance().sparseset.has(index))
                     return false;
             }
             if constexpr (sizeof...(ARGS) > 0)

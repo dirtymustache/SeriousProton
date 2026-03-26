@@ -203,6 +203,7 @@ set(source_files #All SeriousProton's objects to compile
     src/io/network/streamSocket.cpp
     src/io/network/tcpSocket.cpp
     src/io/network/udpSocket.cpp
+    src/io/network/websocketStreamSocket.cpp
     src/io/http/request.cpp
     src/io/http/server.cpp
     src/io/http/websocket.cpp
@@ -245,6 +246,7 @@ set(source_files #All SeriousProton's objects to compile
     src/io/network/streamSocket.h
     src/io/network/tcpSocket.h
     src/io/network/udpSocket.h
+    src/io/network/websocketStreamSocket.h
     src/logging.h
     src/multiplayer_client.h
     src/multiplayer.h

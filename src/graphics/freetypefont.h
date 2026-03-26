@@ -2,7 +2,7 @@
 #define SP_GRAPHICS_FREETYPEFONT_H
 
 #include "graphics/font.h"
-#include "resources.h"
+#include "../resources.h"
 #include <unordered_map>
 
 

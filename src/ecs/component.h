@@ -23,6 +23,16 @@ protected:
 };
 
 template<typename T> class ComponentStorage : public ComponentStorageBase {
+public:
+    static ComponentStorage<T>& instance()
+    {
+        static ComponentStorage<T> storage;
+        return storage;
+    }
+
+private:
+    ComponentStorage() = default;
+
     void destroy(uint32_t index) override
     {
         sparseset.remove(index);
@@ -30,13 +40,11 @@ template<typename T> class ComponentStorage : public ComponentStorageBase {
 
     virtual void dumpDebugInfoImpl() override
     {
-        if (storage.sparseset.size())
-            LOG(Debug, "Component:", typeid(T).name(), " Count: ", storage.sparseset.size());
+        if (sparseset.size())
+            LOG(Debug, "Component:", typeid(T).name(), " Count: ", sparseset.size());
     }
 
     SparseSet<T> sparseset;
-
-    static inline ComponentStorage<T> storage;
 
     friend class Entity;
     template<class, class...> friend class Query;
