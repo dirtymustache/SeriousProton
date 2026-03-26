@@ -37,7 +37,7 @@ private:
     Source* previous;
     
 private:
-    static void startAudioSystem();
+    static bool startAudioSystem();
     static void stopAudioSystem();
     static void onAudioCallback(int16_t* stream, int sample_count);
     

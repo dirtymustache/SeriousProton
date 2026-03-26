@@ -170,8 +170,7 @@ void Engine::runMainLoop()
 
     if (!audio_started)
     {
-        sp::audio::Source::startAudioSystem();
-        audio_started = true;
+        audio_started = sp::audio::Source::startAudioSystem();
     }
 
     emscripten_set_main_loop_arg([](void* userdata) {
@@ -338,8 +337,7 @@ void Engine::handleEvent(SDL_Event& event)
 #ifdef __EMSCRIPTEN__
         if (!audio_started)
         {
-            sp::audio::Source::startAudioSystem();
-            audio_started = true;
+            audio_started = sp::audio::Source::startAudioSystem();
         }
 #endif
     case SDL_KEYUP:
@@ -352,8 +350,7 @@ void Engine::handleEvent(SDL_Event& event)
 #ifdef __EMSCRIPTEN__
         if (!audio_started)
         {
-            sp::audio::Source::startAudioSystem();
-            audio_started = true;
+            audio_started = sp::audio::Source::startAudioSystem();
         }
 #endif
     case SDL_MOUSEBUTTONUP:
@@ -369,8 +366,7 @@ void Engine::handleEvent(SDL_Event& event)
 #ifdef __EMSCRIPTEN__
         if (!audio_started)
         {
-            sp::audio::Source::startAudioSystem();
-            audio_started = true;
+            audio_started = sp::audio::Source::startAudioSystem();
         }
 #endif
     case SDL_FINGERUP:
@@ -421,3 +417,12 @@ void Engine::shutdown()
 {
     running = false;
 }
+
+#ifdef __EMSCRIPTEN__
+bool Engine::ensureAudioStarted()
+{
+    if (!audio_started)
+        audio_started = sp::audio::Source::startAudioSystem();
+    return audio_started;
+}
+#endif

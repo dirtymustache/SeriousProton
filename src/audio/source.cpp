@@ -69,10 +69,21 @@ void Source::stop()
         next->previous = previous;
 }
 
-void Source::startAudioSystem()
+bool Source::startAudioSystem()
 {
     if (audio_device != 0)
-        return;
+        return true;
+
+#ifdef __EMSCRIPTEN__
+    if ((SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) == 0)
+    {
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
+        {
+            LOG(Error, "Failed to initialize SDL audio subsystem: ", SDL_GetError());
+            return false;
+        }
+    }
+#endif
 
     SDL_AudioSpec want, have;
     memset(&want, 0, sizeof(want));
@@ -85,10 +96,12 @@ void Source::startAudioSystem()
     if (audio_device == 0)
     {
         LOG(Error, "Failed to open audio device: ", SDL_GetError());
+        return false;
     } else {
         LOG(Info, "Opened audio device freq=", have.freq, " channels=", int(have.channels), " samples=", have.samples);
         logged_first_mix = false;
         SDL_PauseAudioDevice(audio_device, 0);
+        return true;
     }
 }
 

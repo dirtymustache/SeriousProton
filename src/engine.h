@@ -54,6 +54,9 @@ public:
     void runFrame();
     void shutdown();
     bool isRunning() { return running; }
+#ifdef __EMSCRIPTEN__
+    bool ensureAudioStarted();
+#endif
 private:
     void handleEvent(SDL_Event& event);
 };
