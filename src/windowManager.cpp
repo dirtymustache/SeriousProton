@@ -159,6 +159,10 @@ void Window::setTitle(string title)
 
 void Window::setIcon(string icon_name)
 {
+#ifdef __EMSCRIPTEN__
+    (void)icon_name;
+    return;
+#endif
     sp::Image image;
     if (!image.loadFromStream(getResourceStream(icon_name)))
     {
@@ -219,7 +223,7 @@ void Window::create()
     // Create the window of the application
     auto size = calculateWindowSize();
 
-#if defined(ANDROID)
+#if defined(ANDROID) || defined(__EMSCRIPTEN__)
     auto context_profile_mask = SDL_GL_CONTEXT_PROFILE_ES;
     auto context_profile_minor_version = getFromEnvironment("SP_GL_MINOR", "0").toInt();
 #elif defined(__APPLE__)

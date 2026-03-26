@@ -66,7 +66,7 @@ class FileResourceStream : public ResourceStream
 public:
     FileResourceStream(string filename)
     {
-#ifndef ANDROID
+#if !defined(ANDROID) && !defined(__EMSCRIPTEN__)
         std::error_code ec;
         if(!std::filesystem::is_regular_file(filename.c_str(), ec))
         {
@@ -78,6 +78,8 @@ public:
             io = SDL_RWFromFile(filename.c_str(), "rb");
 #else
        //Android reads from the assets bundle, so we cannot check if the file exists and is a regular file
+       //Emscripten preloads into a virtual FS, so probing with std::filesystem before open
+       //can create noisy dependency churn during startup.
        io = SDL_RWFromFile(filename.c_str(), "rb");
 #endif
     }

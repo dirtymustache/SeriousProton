@@ -1,6 +1,6 @@
 #include <io/http/request.h>
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
 
@@ -31,7 +31,7 @@ Request::Response Request::post(const string& path, const string& data)
     return request("POST", path, data);
 }
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 EM_JS(char*, emHttpRequest, (const char* method, const char* url, const char* body, uint32_t* status_code), {
     try
     {
@@ -56,14 +56,14 @@ EM_JS(char*, emHttpRequest, (const char* method, const char* url, const char* bo
 
 Request::Response Request::request(const string& method, const string& path, const string& data)
 {
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     if (scheme == Scheme::Auto)
         scheme = ((port == 443) ? Scheme::Https : Scheme::Http);
 
     string url = scheme == Scheme::Http ? "http://" : "https://";
     url += headers["Host"];
     if ((scheme == Scheme::Http && port != 80) || (scheme == Scheme::Https && port != 443))
-        url += ":" + sp::string(port);
+        url += ":" + string(port);
     url += path;
 
     Response response;

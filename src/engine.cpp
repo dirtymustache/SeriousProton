@@ -11,6 +11,9 @@
 
 #include <thread>
 #include <SDL.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #ifdef STEAMSDK
 #include "steam/steam_api.h"
@@ -157,116 +160,134 @@ P<PObject> Engine::getObject(string name)
 
 void Engine::runMainLoop()
 {
+#ifdef __EMSCRIPTEN__
     if (Window::all_windows.size() == 0)
     {
-        sp::SystemStopwatch frame_timer;
-#ifdef DEBUG
-        sp::SystemTimer debug_output_timer;
-        debug_output_timer.repeat(5);
-#endif
-
         while(running)
-        {
-            // Handle SDL_QUIT event
-            SDL_Event event;
-            while (SDL_PollEvent(&event))
-            {
-                if (event.type == SDL_QUIT)
-                {
-                    running = false;
-                }
-            }
-#ifdef DEBUG
-            if (debug_output_timer.isExpired())
-                LOG(DEBUG) << "Object count: " << DEBUG_PobjCount << " " << updatableList.size();
+            runFrame();
+        return;
+    }
+
+    emscripten_set_main_loop_arg([](void* userdata) {
+        auto* self = static_cast<Engine*>(userdata);
+        self->runFrame();
+        if (!self->isRunning())
+            emscripten_cancel_main_loop();
+    }, this, 0, true);
+    return;
 #endif
 
-            auto realtime_delta = frame_timer.restart();
-            auto update_delta = realtime_delta;
-            if (update_delta > 0.5f)
-                update_delta = 0.5f;
-            if (update_delta < 0.001f)
-                update_delta = 0.001f;
-            update_delta *= gameSpeed;
-
-            foreach(Updatable, u, updatableList)
-                u->update(update_delta);
-            for(auto system : systems)
-                system->update(update_delta);
-            sp::CollisionSystem::update(update_delta);
-            elapsedTime += update_delta;
-            soundManager->updateTick();
-#ifdef STEAMSDK
-            SteamAPI_RunCallbacks();
-#endif
-            std::this_thread::sleep_for(std::chrono::duration<float>(1.f/60.f - realtime_delta));
-        }
+    if (Window::all_windows.size() == 0)
+    {
+        while(running)
+            runFrame();
     }else{
         sp::audio::Source::startAudioSystem();
-        sp::SystemStopwatch frame_timer;
-#ifdef DEBUG
-        sp::SystemTimer debug_output_timer;
-        debug_output_timer.repeat(5);
-#endif
         while(running)
-        {
-            // Handle events
-            SDL_Event event;
-            while (SDL_PollEvent(&event))
-            {
-                handleEvent(event);
-            }
-
-#ifdef DEBUG
-            if (debug_output_timer.isExpired())
-                LOG(DEBUG) << "Object count: " << DEBUG_PobjCount << " " << updatableList.size();
-#endif
-
-            float delta = frame_timer.restart();
-            if (delta > 0.5f)
-                delta = 0.5f;
-            if (delta < 0.001f)
-                delta = 0.001f;
-            delta *= gameSpeed;
-            EngineTiming engine_timing;
-            
-            sp::SystemStopwatch engine_timing_stopwatch;
-            foreach(Updatable, u, updatableList) {
-                auto name = string(typeid(**u).name());
-                u->update(delta);
-                engine_timing["update:" + name] = engine_timing_stopwatch.restart();
-            }
-            for(auto system : systems) {
-                system->update(delta);
-                engine_timing[typeid(*system).name()] = engine_timing_stopwatch.restart();
-            }
-            elapsedTime += delta;
-            sp::CollisionSystem::update(delta);
-            engine_timing["collision"] = engine_timing_stopwatch.restart();
-            soundManager->updateTick();
-#ifdef STEAMSDK
-            SteamAPI_RunCallbacks();
-#endif
-
-            // Clear the window
-            for(auto window : Window::all_windows)
-                window->render();
-            engine_timing["rendering"] = engine_timing_stopwatch.restart();
-            for (auto window : Window::all_windows)
-                window->swapBuffers();
-            engine_timing_stopwatch.restart(); // skip vsync interval in timing
-
-            engine_timing["server_update"] = 0.0f;
-            if (game_server)
-                engine_timing["server_update"] = game_server->getUpdateTime();
-            
-            last_engine_timing = engine_timing;
-
-            sp::io::Keybinding::allPostUpdate();
-        }
+            runFrame();
         soundManager->stopMusic();
         sp::audio::Source::stopAudioSystem();
     }
+}
+
+void Engine::runFrame()
+{
+    static sp::SystemStopwatch frame_timer;
+#ifdef DEBUG
+    static sp::SystemTimer debug_output_timer;
+    static bool debug_timer_initialized = false;
+    if (!debug_timer_initialized)
+    {
+        debug_output_timer.repeat(5);
+        debug_timer_initialized = true;
+    }
+#endif
+
+    if (Window::all_windows.size() == 0)
+    {
+        SDL_Event event;
+        while (SDL_PollEvent(&event))
+        {
+            if (event.type == SDL_QUIT)
+                running = false;
+        }
+#ifdef DEBUG
+        if (debug_output_timer.isExpired())
+            LOG(DEBUG) << "Object count: " << DEBUG_PobjCount << " " << updatableList.size();
+#endif
+
+        auto realtime_delta = frame_timer.restart();
+        auto update_delta = realtime_delta;
+        if (update_delta > 0.5f)
+            update_delta = 0.5f;
+        if (update_delta < 0.001f)
+            update_delta = 0.001f;
+        update_delta *= gameSpeed;
+
+        foreach(Updatable, u, updatableList)
+            u->update(update_delta);
+        for(auto system : systems)
+            system->update(update_delta);
+        sp::CollisionSystem::update(update_delta);
+        elapsedTime += update_delta;
+        soundManager->updateTick();
+#ifdef STEAMSDK
+        SteamAPI_RunCallbacks();
+#endif
+#ifndef __EMSCRIPTEN__
+        std::this_thread::sleep_for(std::chrono::duration<float>(1.f / 60.f - realtime_delta));
+#endif
+        return;
+    }
+
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+        handleEvent(event);
+
+#ifdef DEBUG
+    if (debug_output_timer.isExpired())
+        LOG(DEBUG) << "Object count: " << DEBUG_PobjCount << " " << updatableList.size();
+#endif
+
+    float delta = frame_timer.restart();
+    if (delta > 0.5f)
+        delta = 0.5f;
+    if (delta < 0.001f)
+        delta = 0.001f;
+    delta *= gameSpeed;
+    EngineTiming engine_timing;
+
+    sp::SystemStopwatch engine_timing_stopwatch;
+    foreach(Updatable, u, updatableList) {
+        auto name = string(typeid(**u).name());
+        u->update(delta);
+        engine_timing["update:" + name] = engine_timing_stopwatch.restart();
+    }
+    for(auto system : systems) {
+        system->update(delta);
+        engine_timing[typeid(*system).name()] = engine_timing_stopwatch.restart();
+    }
+    elapsedTime += delta;
+    sp::CollisionSystem::update(delta);
+    engine_timing["collision"] = engine_timing_stopwatch.restart();
+    soundManager->updateTick();
+#ifdef STEAMSDK
+    SteamAPI_RunCallbacks();
+#endif
+
+    for(auto window : Window::all_windows)
+        window->render();
+    engine_timing["rendering"] = engine_timing_stopwatch.restart();
+    for (auto window : Window::all_windows)
+        window->swapBuffers();
+    engine_timing_stopwatch.restart();
+
+    engine_timing["server_update"] = 0.0f;
+    if (game_server)
+        engine_timing["server_update"] = game_server->getUpdateTime();
+
+    last_engine_timing = engine_timing;
+    sp::io::Keybinding::allPostUpdate();
 }
 
 void Engine::handleEvent(SDL_Event& event)
@@ -311,7 +332,7 @@ void Engine::handleEvent(SDL_Event& event)
 #ifdef __EMSCRIPTEN__
         if (!audio_started)
         {
-            sp::audio::AudioSource::startAudioSystem();
+            sp::audio::Source::startAudioSystem();
             audio_started = true;
         }
 #endif
@@ -325,7 +346,7 @@ void Engine::handleEvent(SDL_Event& event)
 #ifdef __EMSCRIPTEN__
         if (!audio_started)
         {
-            sp::audio::AudioSource::startAudioSystem();
+            sp::audio::Source::startAudioSystem();
             audio_started = true;
         }
 #endif

@@ -54,6 +54,7 @@ private:
     int listen_port;
     int version_number;
     string server_password;
+    bool networking_enabled;
 
     int sendDataCounter;
     int sendDataCounterPerClient;
@@ -95,7 +96,7 @@ private:
     std::thread master_server_update_thread;
     MasterServerState master_server_state = MasterServerState::Disabled;
 public:
-    GameServer(string server_name, int versionNumber, int listenPort = defaultServerPort);
+    GameServer(string server_name, int versionNumber, int listenPort = defaultServerPort, bool enable_networking = true);
     virtual ~GameServer();
 
     void connectToProxy(sp::io::network::Address address, int port = defaultServerPort);

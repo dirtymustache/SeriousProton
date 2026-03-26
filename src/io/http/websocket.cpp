@@ -4,7 +4,7 @@
 #include <random.h>
 #include <logging.h>
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -22,7 +22,7 @@
 namespace sp {
 namespace io {
 namespace http {
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
 namespace websocket {
     static constexpr int fin_mask = 0x80;
     static constexpr int rsv_mask = 0x70;
@@ -44,7 +44,9 @@ namespace websocket {
 
 Websocket::Websocket()
 {
+#ifndef __EMSCRIPTEN__
     socket = std::make_unique<network::TcpSocket>();
+#endif
 }
 
 Websocket::Websocket(Websocket&& other)
@@ -54,7 +56,7 @@ Websocket::Websocket(Websocket&& other)
 
 Websocket::~Websocket()
 {
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     close();
 #endif
 }
@@ -62,7 +64,7 @@ Websocket::~Websocket()
 Websocket& Websocket::operator=(Websocket&& other)
 {
     state = other.state;
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     socket_handle = other.socket_handle;
     other.socket_handle = -1;
     other.state = State::Disconnected;
@@ -79,7 +81,7 @@ Websocket& Websocket::operator=(Websocket&& other)
 
 void Websocket::setHeader(const string& key, const string& value)
 {
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     LOG(Error, "Tried to set a header on a websocket in web build. Which is not possible.");
 #else
     headers[key] = value;
@@ -119,7 +121,7 @@ bool Websocket::connect(const string& hostname, int port, const string& path, Sc
     if (scheme == Scheme::Auto)
         scheme = port == 443 ? Scheme::Https : Scheme::Http;
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     struct sockaddr_in server_addr;
     struct hostent* he = gethostbyname((hostname + path).c_str());
     if (!he)
@@ -178,7 +180,7 @@ bool Websocket::connect(const string& hostname, int port, const string& path, Sc
 
 void Websocket::close()
 {
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     if (socket_handle != -1)
     {
         ::close(socket_handle);
@@ -254,7 +256,7 @@ bool Websocket::receive(io::DataBuffer& data_buffer)
 
     if (state == State::Operational)
     {
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
         char buffer[4096];
         size_t buffer_size = recv(socket_handle, buffer, sizeof(buffer), 0);
         if (buffer_size < 0)
@@ -388,7 +390,7 @@ bool Websocket::receive(string& output)
 
 void Websocket::updateReceiveBuffer()
 {
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     if (state == State::Connecting)
     {
         struct pollfd pfd[1];

@@ -26,8 +26,8 @@ static std::unordered_map<string, int> multiplayer_stats;
 
 P<GameServer> game_server;
 
-GameServer::GameServer(string server_name, int version_number, int listen_port)
-: server_name(server_name), listen_port(listen_port), version_number(version_number)
+GameServer::GameServer(string server_name, int version_number, int listen_port, bool enable_networking)
+: server_name(server_name), listen_port(listen_port), version_number(version_number), networking_enabled(enable_networking)
 {
     SDL_assert(!game_server);
     SDL_assert(!game_client);
@@ -40,6 +40,9 @@ GameServer::GameServer(string server_name, int version_number, int listen_port)
 
     nextObjectId = 1;
     nextclient_id = 1;
+
+    if (!networking_enabled)
+        return;
 
     if (!listen_socket.listen(static_cast<uint16_t>(listen_port)))
     {
@@ -250,20 +253,23 @@ void GameServer::update(float /*gameDelta*/)
         objectMap.erase(delList[n]);
     }
 
-    handleBroadcastUDPSocket(delta);
-
-    if (listen_socket.accept(*new_socket))
+    if (networking_enabled)
     {
-        new_socket->setBlocking(false);
-        new_socket->setDelay(false);
-        newClientConnection(std::move(new_socket));
-        new_socket = std::make_unique<sp::io::network::TcpSocket>();
-    }
+        handleBroadcastUDPSocket(delta);
+
+        if (listen_socket.accept(*new_socket))
+        {
+            new_socket->setBlocking(false);
+            new_socket->setDelay(false);
+            newClientConnection(std::move(new_socket));
+            new_socket = std::make_unique<sp::io::network::TcpSocket>();
+        }
 #ifdef STEAMSDK
-    auto steam_socket = listen_steam.accept();
-    if (steam_socket)
-        newClientConnection(std::move(steam_socket));
+        auto steam_socket = listen_steam.accept();
+        if (steam_socket)
+            newClientConnection(std::move(steam_socket));
 #endif
+    }
 
     for(unsigned int n=0; n<clientList.size(); n++)
     {
