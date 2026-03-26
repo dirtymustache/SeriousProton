@@ -13,7 +13,8 @@ namespace audio {
 static std::recursive_mutex source_list_mutex;
 static Source* source_list_start = nullptr;
 
-static SDL_AudioDeviceID audio_device;
+static SDL_AudioDeviceID audio_device = 0;
+static bool logged_first_mix = false;
 
 class MySDLAudioInterface {
 public:
@@ -70,6 +71,9 @@ void Source::stop()
 
 void Source::startAudioSystem()
 {
+    if (audio_device != 0)
+        return;
+
     SDL_AudioSpec want, have;
     memset(&want, 0, sizeof(want));
     want.freq = 44100;
@@ -82,17 +86,28 @@ void Source::startAudioSystem()
     {
         LOG(Error, "Failed to open audio device: ", SDL_GetError());
     } else {
+        LOG(Info, "Opened audio device freq=", have.freq, " channels=", int(have.channels), " samples=", have.samples);
+        logged_first_mix = false;
         SDL_PauseAudioDevice(audio_device, 0);
     }
 }
 
 void Source::stopAudioSystem()
 {
+    if (audio_device == 0)
+        return;
     SDL_PauseAudioDevice(audio_device, 1);
+    SDL_CloseAudioDevice(audio_device);
+    audio_device = 0;
 }
 
 void Source::onAudioCallback(int16_t* stream, int sample_count)
 {
+    if (!logged_first_mix)
+    {
+        LOG(Info, "Audio callback running with samples=", sample_count);
+        logged_first_mix = true;
+    }
     memset(stream, 0, sample_count * sizeof(int16_t));
     for(Source* source = source_list_start; source; source = source->next)
         source->onMixSamples(stream, sample_count);

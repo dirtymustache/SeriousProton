@@ -168,6 +168,12 @@ void Engine::runMainLoop()
         return;
     }
 
+    if (!audio_started)
+    {
+        sp::audio::Source::startAudioSystem();
+        audio_started = true;
+    }
+
     emscripten_set_main_loop_arg([](void* userdata) {
         auto* self = static_cast<Engine*>(userdata);
         self->runFrame();
@@ -360,6 +366,13 @@ void Engine::handleEvent(SDL_Event& event)
         window_id = event.window.windowID;
         break;
     case SDL_FINGERDOWN:
+#ifdef __EMSCRIPTEN__
+        if (!audio_started)
+        {
+            sp::audio::Source::startAudioSystem();
+            audio_started = true;
+        }
+#endif
     case SDL_FINGERUP:
     case SDL_FINGERMOTION:
 #if SDL_VERSION_ATLEAST(2, 0, 12)
