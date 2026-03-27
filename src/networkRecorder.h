@@ -34,9 +34,11 @@ public:
     virtual void update(float delta) override;
 
 private:
+    bool ensureRecordingDeviceOpened();
     static void SDLCallback(void* userdata, uint8_t* stream, int len);
     void onProcessSamples(const int16_t* samples, std::size_t sample_count);
-    static constexpr int frame_size = 2880;
+    // Use 20ms Opus frames for lower latency and smoother browser voice chat.
+    static constexpr int frame_size = 960;
 
     void startSending();
     bool sendAudioPacket();

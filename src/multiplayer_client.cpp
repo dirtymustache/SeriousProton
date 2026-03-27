@@ -288,9 +288,8 @@ void GameClient::update(float /*delta*/)
                 {
                     int32_t id = 0;
                     packet >> id;
-                    const unsigned char* ptr = reinterpret_cast<const unsigned char*>(packet.getData());
-                    ptr += sizeof(command_t) + sizeof(int32_t);
-                    int32_t size = static_cast<int>(packet.getDataSize()) - sizeof(command_t) - sizeof(int32_t);
+                    const unsigned char* ptr = reinterpret_cast<const unsigned char*>(packet.getReadData());
+                    int32_t size = static_cast<int>(packet.available());
                     audio_stream_manager.receivedPacketFromNetwork(id, ptr, size);
                 }
                 break;

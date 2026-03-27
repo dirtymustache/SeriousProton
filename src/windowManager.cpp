@@ -84,6 +84,13 @@ void Window::render()
     if (fullscreen_key.getDown())
         setMode(getMode() == Mode::Window ? Mode::Fullscreen : Mode::Window);
 
+#ifdef __EMSCRIPTEN__
+    // Browsers sometimes settle the canvas size a frame or two after startup
+    // without delivering an SDL resize event. Refresh the logical view from the
+    // current window size so the first menu layout uses the real canvas bounds.
+    setupView();
+#endif
+
     SDL_GL_MakeCurrent(static_cast<SDL_Window*>(window), gl_context);
 
     int w, h;

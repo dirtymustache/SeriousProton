@@ -1,5 +1,5 @@
 #include <string.h>
-#include <cmath>
+#include <string>
 
 #include "networkRecorder.h"
 #include "multiplayer.h"
@@ -10,28 +10,39 @@
 #include <SDL.h>
 #include <opus.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+static void browserDiag(const std::string& message)
+{
+    EM_ASM({
+        if (typeof window.EmptyEpsilonDiag === "function")
+            window.EmptyEpsilonDiag(UTF8ToString($0));
+    }, message.c_str());
+}
+#endif
+
 static SDL_AudioDeviceID record_device_id;
+static SDL_AudioStream* record_audio_stream;
 static NetworkAudioRecorder* active_recorder;
 
 NetworkAudioRecorder::NetworkAudioRecorder()
 {
-    if (record_device_id == 0)
-    {
-        SDL_AudioSpec want, obtained;
-        memset(&want, 0, sizeof(want));
-        want.freq = 44100;
-        want.format = AUDIO_S16SYS;
-        want.samples = 4410;
-        want.channels = 2;
-        want.callback = &NetworkAudioRecorder::SDLCallback;
-        record_device_id = SDL_OpenAudioDevice(nullptr, true, &want, &obtained, false);
-    }
     active_recorder = this;
 }
 
 NetworkAudioRecorder::~NetworkAudioRecorder()
 {
-    SDL_PauseAudioDevice(record_device_id, 1);
+    if (record_device_id != 0)
+    {
+        SDL_PauseAudioDevice(record_device_id, 1);
+        SDL_CloseAudioDevice(record_device_id);
+        record_device_id = 0;
+    }
+    if (record_audio_stream)
+    {
+        SDL_FreeAudioStream(record_audio_stream);
+        record_audio_stream = nullptr;
+    }
 
     if (encoder)
     {
@@ -45,10 +56,82 @@ void NetworkAudioRecorder::addKeyActivation(sp::io::Keybinding* key, int target_
     keys.push_back({key, target_identifier});
 }
 
+bool NetworkAudioRecorder::ensureRecordingDeviceOpened()
+{
+    if (record_device_id != 0)
+        return true;
+
+    if ((SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) == 0)
+    {
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
+        {
+            LOG(ERROR) << "Failed to initialize SDL audio subsystem for voice capture: " << SDL_GetError();
+#ifdef __EMSCRIPTEN__
+            browserDiag("voice: SDL audio subsystem init failed");
+#endif
+            return false;
+        }
+    }
+
+    SDL_AudioSpec want, obtained;
+    memset(&want, 0, sizeof(want));
+    want.freq = 48000;
+    want.format = AUDIO_S16SYS;
+    want.samples = frame_size;
+    want.channels = 1;
+    want.callback = &NetworkAudioRecorder::SDLCallback;
+
+    record_device_id = SDL_OpenAudioDevice(nullptr, true, &want, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
+    if (record_device_id == 0)
+    {
+        LOG(ERROR) << "Failed to open voice capture device: " << SDL_GetError();
+#ifdef __EMSCRIPTEN__
+        browserDiag("voice: failed to open capture device");
+#endif
+        return false;
+    }
+
+    record_audio_stream = SDL_NewAudioStream(obtained.format, obtained.channels, obtained.freq, AUDIO_S16SYS, 1, 48000);
+    if (!record_audio_stream)
+    {
+        LOG(ERROR) << "Failed to create voice capture conversion stream: " << SDL_GetError();
+        SDL_CloseAudioDevice(record_device_id);
+        record_device_id = 0;
+#ifdef __EMSCRIPTEN__
+        browserDiag("voice: failed to create capture conversion stream");
+#endif
+        return false;
+    }
+
+    LOG(INFO) << "Voice capture opened freq=" << obtained.freq << " channels=" << int(obtained.channels) << " samples=" << obtained.samples << " format=" << int(obtained.format);
+#ifdef __EMSCRIPTEN__
+    browserDiag("voice: capture device opened");
+#endif
+    return true;
+}
+
 /// Called from a seperate thread, be sure to watch for thread safety!
 void NetworkAudioRecorder::SDLCallback(void* userdata, uint8_t* stream, int len)
 {
-    active_recorder->onProcessSamples(reinterpret_cast<int16_t*>(stream), len / 2);
+    if (!active_recorder || !record_audio_stream)
+        return;
+
+    if (SDL_AudioStreamPut(record_audio_stream, stream, len) < 0)
+    {
+        LOG(ERROR) << "Failed to queue voice capture samples for conversion: " << SDL_GetError();
+        return;
+    }
+
+    int available = SDL_AudioStreamAvailable(record_audio_stream);
+    if (available <= 0)
+        return;
+
+    std::vector<uint8_t> converted(static_cast<size_t>(available));
+    int received = SDL_AudioStreamGet(record_audio_stream, converted.data(), available);
+    if (received <= 0)
+        return;
+
+    active_recorder->onProcessSamples(reinterpret_cast<int16_t*>(converted.data()), static_cast<std::size_t>(received / sizeof(int16_t)));
 }
 
 void NetworkAudioRecorder::onProcessSamples(const int16_t* samples, std::size_t sample_count)
@@ -67,18 +150,15 @@ void NetworkAudioRecorder::update(float /*delta*/)
     {
         if (keys[idx].key->getDown() && active_key_index == -1)
         {
-            if (active_key_index == -1)
+            if (ensureRecordingDeviceOpened())
             {
                 samples_till_stop = -1;
                 active_key_index = static_cast<int>(idx);
                 SDL_PauseAudioDevice(record_device_id, 0);
                 startSending();
-            } else if (idx == size_t(active_key_index))
-            {
-                samples_till_stop = -1;
             }
         }
-    }
+    } 
     while(sendAudioPacket())
     {
     }
@@ -106,6 +186,13 @@ void NetworkAudioRecorder::startSending()
     {
         LOG(ERROR) << "Failed to create opus encoder:" << error;
     }
+    else
+    {
+        opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
+        opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(10));
+        opus_encoder_ctl(encoder, OPUS_SET_BITRATE(32000));
+        opus_encoder_ctl(encoder, OPUS_SET_VBR(1));
+    }
 
     if (game_client)
     {
@@ -129,6 +216,12 @@ bool NetworkAudioRecorder::sendAudioPacket()
         int packet_size = 0;
         if (encoder)
             packet_size = opus_encode(encoder, sample_buffer.data(), frame_size, packet_buffer, sizeof(packet_buffer));
+        if (packet_size <= 0)
+        {
+            LOG(ERROR) << "Failed to encode voice frame: " << packet_size;
+            sample_buffer.erase(sample_buffer.begin(), sample_buffer.begin() + frame_size);
+            return true;
+        }
         if (game_client)
         {
             sp::io::DataBuffer audio_packet;
@@ -167,6 +260,8 @@ void NetworkAudioRecorder::finishSending()
     sendAudioPacket();
     opus_encoder_destroy(encoder);
     encoder = nullptr;
+    if (record_audio_stream)
+        SDL_AudioStreamClear(record_audio_stream);
 
     if (game_client)
     {
