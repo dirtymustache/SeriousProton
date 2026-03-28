@@ -328,7 +328,10 @@ void Window::create()
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
     }
 
-    int flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+    int flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+#ifndef __EMSCRIPTEN__
+    flags |= SDL_WINDOW_ALLOW_HIGHDPI;
+#endif
     switch(mode)
     {
     case Mode::Window:
