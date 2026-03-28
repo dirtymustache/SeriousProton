@@ -330,6 +330,22 @@ void Engine::handleEvent(SDL_Event& event)
     }
 #endif
 
+    if (event.type == SDL_KEYDOWN && isAltEnterToggle(event.key))
+    {
+        const auto window_id = event.key.windowID;
+        if (window_id != 0)
+        {
+            foreach(Window, window, Window::all_windows)
+            {
+                if (window->window && SDL_GetWindowID(static_cast<SDL_Window*>(window->window)) == window_id)
+                {
+                    window->setMode(window->getMode() == Window::Mode::Window ? Window::Mode::Fullscreen : Window::Mode::Window);
+                    return;
+                }
+            }
+        }
+    }
+
     unsigned int window_id = 0;
     switch(event.type)
     {
