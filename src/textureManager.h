@@ -31,8 +31,10 @@ public:
     bool isDefaultSmoothFiltering() { return defaultSmooth; }
 
     sp::Texture* getTexture(const string& name);
+    sp::Texture* getTextureOrNull(const string& name);
+    void forgetAllTextures();
 private:
-    sp::Texture* loadTexture(const string& name);
+    sp::Texture* loadTexture(const string& name, bool placeholder_on_failure);
 };
 
 #endif//TEXTURE_MANAGER_H

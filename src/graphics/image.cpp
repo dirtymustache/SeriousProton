@@ -74,7 +74,13 @@ static int stream_read(void *user, char *data, int size)
 static void stream_skip(void *user, int n)
 {
     ResourceStream* stream = static_cast<ResourceStream*>(user);
-    stream->seek(stream->tell() + n);
+    auto target = static_cast<int64_t>(stream->tell()) + static_cast<int64_t>(n);
+    if (target < 0)
+        target = 0;
+    auto end = static_cast<int64_t>(stream->getSize());
+    if (target > end)
+        target = end;
+    stream->seek(static_cast<size_t>(target));
 }
 
 static int stream_eof(void *user)
