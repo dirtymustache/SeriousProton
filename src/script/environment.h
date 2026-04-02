@@ -4,7 +4,7 @@
 #include "stringImproved.h"
 #include "script/conversion.h"
 #include "result.h"
-#include "resources.h"
+#include "../resources.h"
 #include <lua/lua.hpp>
 
 

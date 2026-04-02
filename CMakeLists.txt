@@ -28,9 +28,14 @@ set(CMAKE_CXX_STANDARD 17)
 include("cmake/DrMingw.cmake")
 
 #--------------------------------Dependencies----------------------------------
-find_package(SDL2 REQUIRED)
-if(NOT DEFINED SDL2_LIBRARIES)
-    set(SDL2_LIBRARIES SDL2::SDL2 SDL2::SDL2main)
+if(EMSCRIPTEN)
+    set(SDL2_LIBRARIES "")
+    set(SDL2_INCLUDE_DIRS "")
+else()
+    find_package(SDL2 REQUIRED)
+    if(NOT DEFINED SDL2_LIBRARIES)
+        set(SDL2_LIBRARIES SDL2::SDL2 SDL2::SDL2main)
+    endif()
 endif()
 
 # GLM - OpenGL Mathematic library
@@ -198,6 +203,7 @@ set(source_files #All SeriousProton's objects to compile
     src/io/network/streamSocket.cpp
     src/io/network/tcpSocket.cpp
     src/io/network/udpSocket.cpp
+    src/io/network/websocketStreamSocket.cpp
     src/io/http/request.cpp
     src/io/http/server.cpp
     src/io/http/websocket.cpp
@@ -240,6 +246,7 @@ set(source_files #All SeriousProton's objects to compile
     src/io/network/streamSocket.h
     src/io/network/tcpSocket.h
     src/io/network/udpSocket.h
+    src/io/network/websocketStreamSocket.h
     src/logging.h
     src/multiplayer_client.h
     src/multiplayer.h
@@ -349,6 +356,7 @@ find_package(Threads REQUIRED)
 target_compile_definitions(seriousproton_deps
     INTERFACE
         GLM_ENABLE_EXPERIMENTAL=1
+        $<$<BOOL:${EMSCRIPTEN}>:EMSCRIPTEN=1>
         $<$<BOOL:${MSVC}>:NOMINMAX;_CRT_SECURE_NO_WARNINGS>
         $<$<CONFIG:Debug>:DEBUG>
         # Windows: Backwards compatibility with Win7 SP1: https://docs.microsoft.com/en-us/cpp/porting/modifying-winver-and-win32-winnt
@@ -358,6 +366,7 @@ target_compile_definitions(seriousproton_deps
 
 target_compile_options(seriousproton_deps
     INTERFACE
+        "$<$<BOOL:${EMSCRIPTEN}>:-sUSE_SDL=2>"
         "$<$<AND:$<NOT:$<BOOL:${MSVC}>>,$<CONFIG:RelWithDebInfo>>:-g1>"
         "$<$<AND:$<BOOL:${CMAKE_COMPILER_IS_GNUCC}>,$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>>:${OPTIMIZER_FLAGS}>"
         "$<$<NOT:$<BOOL:${MSVC}>>:-Wall;-Wextra;-Woverloaded-virtual;-Wdouble-promotion;-Wsuggest-override;-Werror=return-type;-Wno-unused-parameter;-Wno-unused-but-set-parameter>"
@@ -369,6 +378,7 @@ target_link_libraries(seriousproton_deps
     INTERFACE 
         box2d glad lua ${SDL2_LIBRARIES} glm::glm Threads::Threads ${FREETYPE_LIBRARIES} basisu-transcoder $<BUILD_INTERFACE:steamsdk>
         $<$<BOOL:${WIN32}>:wsock32 ws2_32 crypt32 iphlpapi>
+        "$<$<BOOL:${EMSCRIPTEN}>:-sUSE_SDL=2>"
         # LTO flag must be on the linker's list as well.
         "$<$<AND:$<BOOL:${CMAKE_COMPILER_IS_GNUCC}>,$<OR:$<CONFIG:RelWithDebInfo>,$<CONFIG:Release>>>:-flto>"
         "$<BUILD_INTERFACE:opus;$<$<NOT:$<BOOL:${ANDROID}>>:${CMAKE_DL_LIBS}>>"

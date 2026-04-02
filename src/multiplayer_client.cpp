@@ -6,11 +6,27 @@
 
 #include "ecs/multiplayer.h"
 #include "io/network/tcpSocket.h"
+#ifdef __EMSCRIPTEN__
+#include "io/network/websocketStreamSocket.h"
+#include <emscripten.h>
+#endif
 #ifdef STEAMSDK
 #include "io/network/steamP2PSocket.h"
 #endif
 
 P<GameClient> game_client;
+
+#ifdef __EMSCRIPTEN__
+namespace {
+void browserDiag(const string& message)
+{
+    EM_ASM({
+        if (typeof window.EmptyEpsilonDiag === "function")
+            window.EmptyEpsilonDiag(UTF8ToString($0));
+    }, message.c_str());
+}
+}
+#endif
 
 GameClient::GameClient(int version_number, sp::io::network::Address server, int port_nr)
 : version_number(version_number), server(server), port_nr(port_nr)
@@ -29,6 +45,26 @@ GameClient::GameClient(int version_number, sp::io::network::Address server, int 
     sock->connect(server, port_nr);
     socket = std::move(sock);
 }
+
+#ifdef __EMSCRIPTEN__
+GameClient::GameClient(int version_number, string websocket_url)
+: version_number(version_number), port_nr(defaultServerPort)
+{
+    SDL_assert(!game_server);
+    SDL_assert(!game_client);
+
+    client_id = -1;
+    game_client = this;
+    status = Connecting;
+
+    no_data_timeout.start(no_data_disconnect_time);
+    heartbeat_timer.start(heartbeat_time);
+    browserDiag("gameclient: ctor websocket url = " + websocket_url);
+    auto sock = std::make_unique<sp::io::network::WebsocketStreamSocket>();
+    sock->connect(websocket_url);
+    socket = std::move(sock);
+}
+#endif
 
 #ifdef STEAMSDK
 GameClient::GameClient(int version_number, uint64_t steam_id)
@@ -71,12 +107,18 @@ void GameClient::update(float /*delta*/)
             status = Disconnected;
             disconnect_reason = DisconnectReason::FailedToConnect;
             LOG(INFO) << "GameClient: Failed to connect";
+#ifdef __EMSCRIPTEN__
+            browserDiag("gameclient: state connecting -> disconnected");
+#endif
             break;
         case sp::io::network::StreamSocket::State::Connecting:
             break;
         case sp::io::network::StreamSocket::State::Connected:
             LOG(INFO) << "GameClient: Connected, waiting for authentication";
             status = Authenticating;
+#ifdef __EMSCRIPTEN__
+            browserDiag("gameclient: state connecting -> authenticating");
+#endif
             break;
         }
         return;
@@ -127,8 +169,14 @@ void GameClient::update(float /*delta*/)
                         reply.clear();
                         reply << CMD_CLIENT_SEND_AUTH << int32_t(version_number) << string("");
                         socket->send(reply);
+#ifdef __EMSCRIPTEN__
+                        browserDiag("gameclient: sent auth packet");
+#endif
                     }else{
                         status = WaitingForPassword;
+#ifdef __EMSCRIPTEN__
+                        browserDiag("gameclient: waiting for password");
+#endif
                     }
                 }
                 break;
@@ -136,6 +184,9 @@ void GameClient::update(float /*delta*/)
                 packet >> client_id;
                 status = Connected;
                 disconnect_reason = DisconnectReason::None;
+#ifdef __EMSCRIPTEN__
+                browserDiag("gameclient: connected client_id = " + string(client_id));
+#endif
                 break;
             case CMD_ALIVE:
                 // send response to calculate ping
@@ -145,6 +196,9 @@ void GameClient::update(float /*delta*/)
                 break;
             default:
                 LOG(ERROR) << "Unknown command from server: " << command;
+#ifdef __EMSCRIPTEN__
+                browserDiag("gameclient: unknown auth command = " + string(static_cast<int>(command)));
+#endif
             }
             break;
         case Connected:
@@ -334,6 +388,9 @@ void GameClient::update(float /*delta*/)
             disconnect_reason = socket->getState() != sp::io::network::StreamSocket::State::Closed ? DisconnectReason::TimedOut : DisconnectReason::ClosedByServer;
         socket->close();
         status = Disconnected;
+#ifdef __EMSCRIPTEN__
+        browserDiag("gameclient: disconnected reason = " + string(static_cast<int>(disconnect_reason)));
+#endif
     }
 }
 

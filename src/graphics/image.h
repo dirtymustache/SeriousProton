@@ -2,7 +2,7 @@
 #define SP_GRAPHICS_IMAGE_H
 
 #include "stringImproved.h"
-#include "resources.h"
+#include "../resources.h"
 #include "rect.h"
 #include <glm/gtc/type_precision.hpp>
 

@@ -2,7 +2,7 @@
 #define SP_GRAPHICS_SHADER_H
 
 #include "nonCopyable.h"
-#include "resources.h"
+#include "../resources.h"
 #include <unordered_map>
 
 

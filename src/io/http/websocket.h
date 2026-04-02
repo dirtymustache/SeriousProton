@@ -5,7 +5,7 @@
 #include <io/network/tcpSocket.h>
 #include <unordered_map>
 
-#ifndef EMSCRIPTEN
+#ifndef __EMSCRIPTEN__
 #include <memory>
 #endif
 
@@ -57,7 +57,7 @@ private:
         Operational,
     } state = State::Disconnected;
 
-#ifdef EMSCRIPTEN
+#ifdef __EMSCRIPTEN__
     int socket_handle = -1;
 #else
     string websock_key;

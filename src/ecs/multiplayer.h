@@ -33,7 +33,7 @@ public:
 
     void sendAll(sp::io::DataBuffer& packet) override
     {
-        for(auto [index, data] : sp::ecs::ComponentStorage<T>::storage.sparseset)
+        for(auto [index, data] : sp::ecs::ComponentStorage<T>::instance().sparseset)
         {
             packet << CMD_ECS_SET_COMPONENT << component_index << index << data;
         }
@@ -41,7 +41,7 @@ public:
 
     void update(sp::io::DataBuffer& packet) override
     {
-        for(auto [index, data] : sp::ecs::ComponentStorage<T>::storage.sparseset)
+        for(auto [index, data] : sp::ecs::ComponentStorage<T>::instance().sparseset)
         {
             if (!component_copy.has(index) || component_copy.get(index) != data) {
                 component_copy.set(index, data);
@@ -50,7 +50,7 @@ public:
         }
         for(auto [index, data] : component_copy)
         {
-            if (!sp::ecs::ComponentStorage<T>::storage.sparseset.has(index)) {
+            if (!sp::ecs::ComponentStorage<T>::instance().sparseset.has(index)) {
                 component_copy.remove(index);
                 packet << CMD_ECS_DEL_COMPONENT << component_index << index;
             }

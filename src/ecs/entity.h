@@ -27,37 +27,37 @@ public:
 	{
 		if (!bool(*this) || !hasComponent<T>())
 			return nullptr;
-		return &ComponentStorage<T>::storage.sparseset.get(index);
+		return &ComponentStorage<T>::instance().sparseset.get(index);
 	}
 	template<class T> const T* getComponent() const
 	{
 		if (!bool(*this) || !hasComponent<T>())
 			return nullptr;
-		return &ComponentStorage<T>::storage.sparseset.get(index);
+		return &ComponentStorage<T>::instance().sparseset.get(index);
 	}
 	template<class T> T& addComponent()
 	{
-		ComponentStorage<T>::storage.sparseset.set(index, {});
-		return ComponentStorage<T>::storage.sparseset.get(index);
+		ComponentStorage<T>::instance().sparseset.set(index, {});
+		return ComponentStorage<T>::instance().sparseset.get(index);
 	}
 	template<class T, class... ARGS> T& addComponent(ARGS&&... args)
 	{
-		ComponentStorage<T>::storage.sparseset.set(index, T{std::forward<ARGS>(args)...});
-		return ComponentStorage<T>::storage.sparseset.get(index);
+		ComponentStorage<T>::instance().sparseset.set(index, T{std::forward<ARGS>(args)...});
+		return ComponentStorage<T>::instance().sparseset.get(index);
 	}
 	template<class T> T& getOrAddComponent()
 	{
 		if (!hasComponent<T>())
-			ComponentStorage<T>::storage.sparseset.set(index, {});
-		return ComponentStorage<T>::storage.sparseset.get(index);
+			ComponentStorage<T>::instance().sparseset.set(index, {});
+		return ComponentStorage<T>::instance().sparseset.get(index);
 	}
 	template<class T> bool hasComponent() const
 	{
-		return ComponentStorage<T>::storage.sparseset.has(index);
+		return ComponentStorage<T>::instance().sparseset.has(index);
 	}
 	template<class T> void removeComponent()
 	{
-		ComponentStorage<T>::storage.sparseset.remove(index);
+		ComponentStorage<T>::instance().sparseset.remove(index);
 	}
 
 	bool operator==(const Entity& other) const;

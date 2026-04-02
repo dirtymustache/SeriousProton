@@ -51,6 +51,7 @@ public:
     }
 
     void runMainLoop();
+    void runFrame();
     void shutdown();
     bool isRunning() { return running; }
 private:

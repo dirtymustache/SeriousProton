@@ -61,6 +61,9 @@ private:
     DisconnectReason disconnect_reason{ DisconnectReason::Unknown };
 public:
     GameClient(int version_number, sp::io::network::Address server, int port_nr = defaultServerPort);
+#ifdef __EMSCRIPTEN__
+    GameClient(int version_number, string websocket_url);
+#endif
 #ifdef STEAMSDK
     GameClient(int version_number, uint64_t steam_id);
 #endif
