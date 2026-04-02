@@ -13,7 +13,9 @@ namespace audio {
 static std::recursive_mutex source_list_mutex;
 static Source* source_list_start = nullptr;
 
-static SDL_AudioDeviceID audio_device;
+static SDL_AudioDeviceID audio_device = 0;
+static int audio_device_sample_rate = 44100;
+static bool logged_first_mix = false;
 
 class MySDLAudioInterface {
 public:
@@ -47,6 +49,11 @@ bool Source::isPlaying()
     return active;
 }
 
+int Source::getOutputSampleRate()
+{
+    return audio_device_sample_rate;
+}
+
 void Source::stop()
 {
     std::lock_guard<std::recursive_mutex> guard(source_list_mutex);
@@ -68,31 +75,68 @@ void Source::stop()
         next->previous = previous;
 }
 
-void Source::startAudioSystem()
+bool Source::startAudioSystem()
 {
+    if (audio_device != 0)
+        return true;
+
+#ifdef __EMSCRIPTEN__
+    if ((SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) == 0)
+    {
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
+        {
+            LOG(Error, "Failed to initialize SDL audio subsystem: ", SDL_GetError());
+            return false;
+        }
+    }
+#endif
+
     SDL_AudioSpec want, have;
     memset(&want, 0, sizeof(want));
+#ifdef __EMSCRIPTEN__
+    want.freq = 48000;
+#else
     want.freq = 44100;
+#endif
     want.format = AUDIO_S16SYS;
     want.channels = 2;
+#ifdef __EMSCRIPTEN__
+    want.samples = 1024;
+#else
     want.samples = 2048;
+#endif
     want.callback = &MySDLAudioInterface::Callback;
     audio_device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
     if (audio_device == 0)
     {
         LOG(Error, "Failed to open audio device: ", SDL_GetError());
+        return false;
     } else {
+        LOG(Info, "Opened audio device freq=", have.freq, " channels=", int(have.channels), " samples=", have.samples);
+        audio_device_sample_rate = have.freq > 0 ? have.freq : 44100;
+        logged_first_mix = false;
         SDL_PauseAudioDevice(audio_device, 0);
+        return true;
     }
 }
 
 void Source::stopAudioSystem()
 {
+    if (audio_device == 0)
+        return;
     SDL_PauseAudioDevice(audio_device, 1);
+    SDL_CloseAudioDevice(audio_device);
+    audio_device = 0;
+    audio_device_sample_rate = 44100;
 }
 
 void Source::onAudioCallback(int16_t* stream, int sample_count)
 {
+    if (!logged_first_mix)
+    {
+        LOG(Info, "Audio callback running with samples=", sample_count);
+        logged_first_mix = true;
+    }
     memset(stream, 0, sample_count * sizeof(int16_t));
     for(Source* source = source_list_start; source; source = source->next)
         source->onMixSamples(stream, sample_count);

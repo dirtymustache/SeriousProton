@@ -5,6 +5,7 @@
 #include "Renderable.h"
 
 union SDL_Event;
+struct SDL_KeyboardEvent;
 class Window : public virtual PObject
 {
 public:
@@ -20,7 +21,7 @@ public:
     void render();
     void swapBuffers();
 
-    Mode getMode() { return mode; }
+    Mode getMode();
     void setMode(Mode mode);
     int getFSAA() { return fsaa; }
     void setFSAA(int fsaa);
@@ -50,5 +51,7 @@ private:
     void setupView();
     glm::ivec2 calculateWindowSize() const;
 };
+
+bool isAltEnterToggle(const SDL_KeyboardEvent& key_event);
 
 #endif//WINDOW_MANAGER_H

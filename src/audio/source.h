@@ -24,6 +24,7 @@ public:
     void start();
     bool isPlaying();
     void stop();
+    static int getOutputSampleRate();
 
 protected:
     virtual void onMixSamples(int16_t* stream, int sample_count) = 0;
@@ -37,7 +38,7 @@ private:
     Source* previous;
     
 private:
-    static void startAudioSystem();
+    static bool startAudioSystem();
     static void stopAudioSystem();
     static void onAudioCallback(int16_t* stream, int sample_count);
     

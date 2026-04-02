@@ -10,10 +10,12 @@
 
 
 struct OpusDecoder;
+struct _SDL_AudioStream;
 class NetworkAudioStream: public sp::audio::Source
 {
 public:
     NetworkAudioStream();
+    ~NetworkAudioStream();
 
     void receivedPacketFromNetwork(const unsigned char* packet, int packet_size);
     void finalize();
@@ -26,8 +28,10 @@ protected:
     unsigned int sample_rate;
     std::mutex             samples_lock;
     std::vector<int16_t>   samples;
+    int empty_mix_callbacks = 0;
 
     OpusDecoder* decoder = nullptr;
+    _SDL_AudioStream* resample_stream = nullptr;
 };
 
 class NetworkAudioStreamManager

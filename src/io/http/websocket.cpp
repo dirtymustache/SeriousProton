@@ -23,11 +23,20 @@ EM_JS(int, ee_ws_connect, (const char* url_ptr), {
     }
     const id = Module.eeWebSockets.nextId++;
     const url = UTF8ToString(url_ptr);
-    const entry = { state: 0, queue: [] };
+    const diag = function(message) {
+        if (typeof window.EmptyEpsilonDiag === "function") {
+            window.EmptyEpsilonDiag(message);
+        }
+    };
+    const entry = { state: 0, queue: [], url: url, lastError: "" };
     try {
+        diag("ws: connect requested " + url);
         const ws = new WebSocket(url);
         ws.binaryType = "arraybuffer";
-        ws.onopen = function() { entry.state = 1; };
+        ws.onopen = function() {
+            entry.state = 1;
+            diag("ws: onopen " + url);
+        };
         ws.onmessage = function(event) {
             if (event.data instanceof ArrayBuffer) {
                 entry.queue.push(new Uint8Array(event.data));
@@ -35,12 +44,26 @@ EM_JS(int, ee_ws_connect, (const char* url_ptr), {
                 entry.queue.push(new TextEncoder().encode(event.data));
             }
         };
-        ws.onerror = function() { if (entry.state !== 1) entry.state = 2; };
-        ws.onclose = function() { entry.state = 2; };
+        ws.onerror = function(event) {
+            entry.lastError = "browser websocket error";
+            if (entry.state !== 1) {
+                entry.state = 2;
+            }
+            diag("ws: onerror " + url);
+        };
+        ws.onclose = function(event) {
+            entry.state = 2;
+            const code = event && typeof event.code === "number" ? event.code : -1;
+            const reason = event && event.reason ? event.reason : "";
+            const clean = !!(event && event.wasClean);
+            entry.lastError = "close code=" + code + " clean=" + clean + (reason ? " reason=" + reason : "");
+            diag("ws: onclose " + url + " code=" + code + " clean=" + clean + (reason ? " reason=" + reason : ""));
+        };
         entry.ws = ws;
         Module.eeWebSockets.sockets[id] = entry;
         return id;
     } catch (error) {
+        diag("ws: constructor failed " + url + " error=" + error);
         return -1;
     }
 });

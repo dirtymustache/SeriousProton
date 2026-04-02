@@ -108,6 +108,7 @@ void SoundManager::setSoundPitch(int index, float pitch)
 
 int SoundManager::playSound(string name, float pitch, float volume, bool loop)
 {
+    LOG(Info, "playSound request: ", name, " pitch=", pitch, " volume=", volume, " loop=", loop ? 1 : 0);
     auto data = sound_map[name];
     if (data == nullptr)
         data = loadSound(name);

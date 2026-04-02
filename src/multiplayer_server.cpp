@@ -395,17 +395,17 @@ void GameServer::update(float /*gameDelta*/)
                             int32_t client_id;
                             packet >> client_id;
 
-                            const unsigned char* ptr = reinterpret_cast<const unsigned char*>(packet.getData());
-                            ptr += sizeof(int32_t) + sizeof(command_t);
+                            const unsigned char* ptr = reinterpret_cast<const unsigned char*>(packet.getReadData());
+                            const int payload_size = static_cast<int>(packet.available());
                             if (client_id == clientList[n].client_id)
                             {
-                                gotAudioPacket(client_id, ptr, static_cast<int>(packet.getDataSize()) - sizeof(int32_t) - sizeof(command_t));
+                                gotAudioPacket(client_id, ptr, payload_size);
                             }
                             else
                             {
                                 for(auto id : clientList[n].proxy_ids)
                                     if (id == client_id)
-                                        gotAudioPacket(client_id, ptr, static_cast<int>(packet.getDataSize()) - sizeof(int32_t) - sizeof(command_t));
+                                        gotAudioPacket(client_id, ptr, payload_size);
                             }
                         }
                         break;

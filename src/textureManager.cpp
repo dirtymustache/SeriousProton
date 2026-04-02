@@ -24,12 +24,36 @@ sp::Texture* TextureManager::getTexture(const string& name)
         return nullptr;
     sp::Texture* data = textureMap[name];
     if (data == nullptr)
-        return loadTexture(name);
+        return loadTexture(name, true);
     return data;
 }
 
-sp::Texture* TextureManager::loadTexture(const string& name)
+sp::Texture* TextureManager::getTextureOrNull(const string& name)
 {
+    if (disabled)
+        return nullptr;
+    auto it = textureMap.find(name);
+    if (it != textureMap.end())
+        return it->second;
+    return loadTexture(name, false);
+}
+
+void TextureManager::forgetAllTextures()
+{
+    textureMap.clear();
+}
+
+sp::Texture* TextureManager::loadTexture(const string& name, bool placeholder_on_failure)
+{
+    if (disabled)
+        return nullptr;
+
+    auto cache_it = textureMap.find(name);
+    if (cache_it != textureMap.end() && cache_it->second != nullptr)
+        return cache_it->second;
+    if (!placeholder_on_failure && cache_it != textureMap.end())
+        return nullptr;
+
     P<ResourceStream> stream;
     // filename variants:
     //  name
@@ -78,6 +102,11 @@ sp::Texture* TextureManager::loadTexture(const string& name)
         if (image.getSize().x == 0 || image.getSize().y == 0)
         {
             LOG(WARNING) << "Failed to load texture: " << name;
+            if (!placeholder_on_failure)
+            {
+                textureMap[name] = nullptr;
+                return nullptr;
+            }
             image = sp::Image({ 8, 8 }, { 255, 0, 255, 128 });
         }
 

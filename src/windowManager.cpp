@@ -84,6 +84,13 @@ void Window::render()
     if (fullscreen_key.getDown())
         setMode(getMode() == Mode::Window ? Mode::Fullscreen : Mode::Window);
 
+#ifdef __EMSCRIPTEN__
+    // Browsers sometimes settle the canvas size a frame or two after startup
+    // without delivering an SDL resize event. Refresh the logical view from the
+    // current window size so the first menu layout uses the real canvas bounds.
+    setupView();
+#endif
+
     SDL_GL_MakeCurrent(static_cast<SDL_Window*>(window), gl_context);
 
     int w, h;
@@ -100,6 +107,36 @@ void Window::render()
     target.finish();
 }
 
+bool isAltEnterToggle(const SDL_KeyboardEvent& key_event)
+{
+    if (key_event.repeat != 0)
+        return false;
+
+    if (key_event.keysym.sym != SDLK_RETURN && key_event.keysym.sym != SDLK_KP_ENTER)
+        return false;
+
+    return (key_event.keysym.mod & KMOD_ALT) != 0;
+}
+
+static Window::Mode getModeFromWindowFlags(SDL_Window* sdl_window, Window::Mode fallback_mode)
+{
+    if (!sdl_window)
+        return fallback_mode;
+
+    const auto flags = SDL_GetWindowFlags(sdl_window);
+    if (flags & SDL_WINDOW_FULLSCREEN_DESKTOP)
+        return Window::Mode::Fullscreen;
+    if (flags & SDL_WINDOW_FULLSCREEN)
+        return Window::Mode::ExclusiveFullscreen;
+    return Window::Mode::Window;
+}
+
+Window::Mode Window::getMode()
+{
+    mode = getModeFromWindowFlags(static_cast<SDL_Window*>(window), mode);
+    return mode;
+}
+
 void Window::swapBuffers()
 {
     SDL_GL_MakeCurrent(static_cast<SDL_Window*>(window), gl_context);
@@ -108,24 +145,44 @@ void Window::swapBuffers()
 
 void Window::setMode(Mode new_mode)
 {
-    if (mode == new_mode)
+    auto* sdl_window = static_cast<SDL_Window*>(window);
+    auto current_mode = getMode();
+    if (current_mode == new_mode)
         return;
-    mode = new_mode;
-    auto size = calculateWindowSize();
-    SDL_SetWindowSize(static_cast<SDL_Window*>(window), size.x, size.y);
-    switch(mode)
+
+    int fullscreen_flags = 0;
+    switch(new_mode)
     {
     case Mode::Window:
-        SDL_SetWindowFullscreen(static_cast<SDL_Window*>(window), 0);
-        SDL_SetWindowPosition(static_cast<SDL_Window*>(window), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
         break;
     case Mode::Fullscreen:
-        SDL_SetWindowFullscreen(static_cast<SDL_Window*>(window), SDL_WINDOW_FULLSCREEN_DESKTOP);
+        fullscreen_flags = SDL_WINDOW_FULLSCREEN_DESKTOP;
         break;
     case Mode::ExclusiveFullscreen:
-        SDL_SetWindowFullscreen(static_cast<SDL_Window*>(window), SDL_WINDOW_FULLSCREEN);
+        fullscreen_flags = SDL_WINDOW_FULLSCREEN;
         break;
     }
+
+    if (SDL_SetWindowFullscreen(sdl_window, fullscreen_flags) != 0)
+    {
+        LOG(Warning, "Failed to change fullscreen mode: ", SDL_GetError());
+        SDL_ClearError();
+        mode = getModeFromWindowFlags(sdl_window, current_mode);
+        return;
+    }
+
+    if (new_mode == Mode::Window)
+    {
+        // Switch our local mode before recalculating the restored window size.
+        // Otherwise calculateWindowSize() still thinks we're fullscreen and
+        // returns display-sized dimensions, which makes the window appear stuck.
+        mode = Mode::Window;
+        auto size = calculateWindowSize();
+        SDL_SetWindowSize(sdl_window, size.x, size.y);
+        SDL_SetWindowPosition(sdl_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    }
+
+    mode = getModeFromWindowFlags(sdl_window, new_mode);
     setupView();
 }
 
@@ -271,7 +328,10 @@ void Window::create()
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
     }
 
-    int flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+    int flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+#ifndef __EMSCRIPTEN__
+    flags |= SDL_WINDOW_ALLOW_HIGHDPI;
+#endif
     switch(mode)
     {
     case Mode::Window:
@@ -358,7 +418,11 @@ void Window::handleEvent(const SDL_Event& event)
             render_chain->onPointerMove(mapPixelToCoords({event.button.x, event.button.y}), sp::io::Pointer::mouse);
         break;
     case SDL_MOUSEWHEEL:
-        render_chain->onMouseWheelScroll(mapPixelToCoords({event.wheel.mouseX, event.wheel.mouseY}), event.wheel.preciseY);
+        {
+            int wx, wy;
+            SDL_GetMouseState(&wx, &wy);
+            render_chain->onMouseWheelScroll(mapPixelToCoords(glm::ivec2(wx, wy)), event.wheel.preciseY);
+        }
         break;
     case SDL_FINGERDOWN:
         render_chain->onPointerDown(sp::io::Pointer::Button::Touch, {event.tfinger.x * current_virtual_size.x, event.tfinger.y * current_virtual_size.y}, event.tfinger.fingerId);
@@ -463,10 +527,7 @@ void Window::handleEvent(const SDL_Event& event)
             break;
         case SDLK_KP_ENTER:
         case SDLK_RETURN:
-            if (event.key.keysym.mod & KMOD_ALT)
-                setMode(getMode() == Mode::Window ? Mode::Fullscreen : Mode::Window);
-            else
-                render_chain->onTextInput(sp::TextInputEvent::Return);
+            render_chain->onTextInput(sp::TextInputEvent::Return);
             break;
         case SDLK_TAB:
         case SDLK_KP_TAB:

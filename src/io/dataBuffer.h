@@ -44,6 +44,11 @@ public:
     {
         return buffer.data();
     }
+
+    const void* getReadData() const
+    {
+        return buffer.data() + read_index;
+    }
     
     unsigned int getDataSize() const
     {
