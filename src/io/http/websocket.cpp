@@ -207,7 +207,7 @@ bool Websocket::connect(const string& url)
     }
     int end_of_hostname = url.find("/", scheme_length);
     string hostname = url.substr(scheme_length, end_of_hostname);
-    int port = 80;
+    int port = scheme == Scheme::Https ? 443 : 80;
     if (hostname.find(":") != -1)
     {
         port = hostname.substr(hostname.find(":") + 1).toInt();
